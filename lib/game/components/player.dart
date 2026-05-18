@@ -10,11 +10,14 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
   static const double playerSize = 80.0; // 키워주면 더 귀엽게 보입니다
   static const double gravity = 1500.0;
   static const double jumpVelocity = -650.0; // 점프력을 살짝 높임
+  // 한 달리기 사이클(8프레임) 동안 배경이 시각적으로 진행해야 할 픽셀 거리.
+  // 이 값을 gameSpeed로 나눠 stepTime을 동적으로 맞춰 발이 미끄러지지 않게 한다.
+  static const double pixelsPerRunCycle = 220.0;
 
   double velocityY = 0.0;
   late double groundY;
 
-  Player() : super(size: Vector2.all(playerSize));
+  Player() : super(size: Vector2.all(playerSize), anchor: Anchor.bottomCenter);
 
   @override
   Future<void> onLoad() async {
@@ -33,7 +36,7 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
       runImage,
       SpriteAnimationData.sequenced(
         amount: 8,
-        stepTime: 0.06, // 0.1에서 0.06으로 줄여 더 빠르고 부드럽게 재생
+        stepTime: 0.08, // 사람 달리기 1사이클(약 0.64s)에 맞춰 보폭과 시각 속도를 조정
         textureSize: Vector2(runFrameWidth, runImage.height.toDouble()),
       ),
     );
@@ -57,7 +60,7 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
     current = PlayerState.running;
 
     groundY = gameRef.size.y - 100.0; // 바닥 높이
-    position = Vector2(50.0, groundY - playerSize);
+    position = Vector2(50.0 + playerSize / 2, groundY);
 
     // 충돌 박스(Hitbox) 추가 - 캐릭터 이미지에 맞게 크기 조절
     add(RectangleHitbox(
@@ -66,22 +69,38 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
     ));
   }
 
+  void _syncRunStepTime() {
+    final speed = gameRef.gameSpeed;
+    if (speed <= 0) return;
+    final newStepTime = pixelsPerRunCycle / speed / 8;
+    final runFrames = animations?[PlayerState.running]?.frames;
+    if (runFrames == null) return;
+    for (final frame in runFrames) {
+      frame.stepTime = newStepTime;
+    }
+  }
+
   @override
   void update(double dt) {
     super.update(dt);
 
+    // 달리기 애니메이션 속도를 게임 속도에 동기화 (스케이팅 방지)
+    if (current == PlayerState.running) {
+      _syncRunStepTime();
+    }
+
     // 공중에 있거나 위로 점프 중일 때만 중력을 적용합니다.
     // (이 조건이 없으면 매 프레임마다 바닥으로 미세하게 파고들었다가 다시 올라오는 과정이 반복되어 캐릭터가 위아래로 덜덜 떨릴 수 있습니다.)
-    if (position.y < groundY - playerSize || velocityY < 0) {
+    if (position.y < groundY || velocityY < 0) {
       velocityY += gravity * dt;
       position.y += velocityY * dt;
     }
 
     // 바닥에 닿았을 때 (착지)
-    if (position.y >= groundY - playerSize) {
-      position.y = groundY - playerSize;
+    if (position.y >= groundY) {
+      position.y = groundY;
       velocityY = 0;
-      
+
       // 상태가 달리기 상태가 아니라면 변경
       if (current != PlayerState.running) {
         current = PlayerState.running;
@@ -96,13 +115,13 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
 
   void jump() {
     // 바닥에 있을 때만 점프 가능
-    if (position.y >= groundY - playerSize) {
+    if (position.y >= groundY) {
       velocityY = jumpVelocity;
     }
   }
 
   void reset() {
-    position = Vector2(50.0, groundY - playerSize);
+    position = Vector2(50.0 + playerSize / 2, groundY);
     velocityY = 0;
     current = PlayerState.running;
   }
