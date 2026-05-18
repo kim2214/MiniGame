@@ -1,5 +1,9 @@
+import 'dart:math';
+
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flame/particles.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../runner_game.dart';
@@ -17,6 +21,7 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
 
   double velocityY = 0.0;
   late double groundY;
+  final Random _rng = Random();
 
   Player() : super(size: Vector2.all(playerSize), anchor: Anchor.bottomCenter);
 
@@ -120,7 +125,32 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
       velocityY = jumpVelocity;
       HapticFeedback.lightImpact();
       gameRef.audio.playJump();
+      gameRef.add(_buildJumpDust(Vector2(position.x, groundY)));
     }
+  }
+
+  ParticleSystemComponent _buildJumpDust(Vector2 origin) {
+    return ParticleSystemComponent(
+      position: origin.clone(),
+      priority: 5,
+      particle: Particle.generate(
+        count: 7,
+        lifespan: 0.45,
+        generator: (i) {
+          final dx = (_rng.nextDouble() - 0.5) * 110;
+          final dy = -25 - _rng.nextDouble() * 70;
+          return AcceleratedParticle(
+            speed: Vector2(dx, dy),
+            acceleration: Vector2(0, 320),
+            child: CircleParticle(
+              radius: 1.5 + _rng.nextDouble() * 2.2,
+              paint: Paint()
+                ..color = const Color(0xFF8B6F47).withOpacity(0.65),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void reset() {

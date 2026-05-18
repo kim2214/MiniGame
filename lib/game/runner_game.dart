@@ -6,10 +6,14 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flame/effects.dart';
+
 import 'audio_manager.dart';
 import 'components/ground.dart';
+import 'components/milestone_popup.dart';
 import 'components/parallax_background.dart';
 import 'components/player.dart';
+import 'components/player_shadow.dart';
 import 'managers/obstacle_manager.dart';
 
 enum GameState { title, playing, paused, gameOver }
@@ -66,6 +70,7 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
 
     add(Ground());
     player = Player();
+    add(PlayerShadow()); // 플레이어보다 먼저 add → 같은 priority에서 뒤에 그려짐
     add(player);
     obstacleManager = ObstacleManager();
     add(obstacleManager);
@@ -179,6 +184,7 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
       _bestText.text = 'Best: $bestScore';
       _saveBestScore();
       _isNewBest = true;
+      _pulseBestText();
     }
     audio.playHit();
     _deathAnimTime = _deathAnimDuration;
@@ -196,6 +202,8 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
     obstacleManager.reset();
     player.reset();
     _scoreText.text = 'Score: 0';
+    // 죽음 연출 중 pause로 인해 펄스 스케일이 남아있을 수 있어 초기화
+    _bestText.scale = Vector2.all(1.0);
     overlays.remove('GameOver');
     overlays.remove('Paused');
     overlays.add('PauseControl');
@@ -231,8 +239,24 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
       if (milestone > _lastMilestone) {
         _lastMilestone = milestone;
         audio.playMilestone();
+        add(MilestonePopup(scoreValue: milestone * _milestoneStep));
       }
     }
+  }
+
+  void _pulseBestText() {
+    _bestText.add(
+      SequenceEffect([
+        ScaleEffect.to(
+          Vector2.all(1.45),
+          EffectController(duration: 0.15, curve: Curves.easeOut),
+        ),
+        ScaleEffect.to(
+          Vector2.all(1.0),
+          EffectController(duration: 0.22, curve: Curves.easeIn),
+        ),
+      ]),
+    );
   }
 
   @override
