@@ -25,7 +25,7 @@ class Ground extends PositionComponent with HasGameRef<RunnerGame> {
   void update(double dt) {
     super.update(dt);
     // 게임이 진행 중일 때만 바닥을 스크롤 시킵니다.
-    if (!gameRef.isGameOver) {
+    if (gameRef.state == GameState.playing) {
       scrollOffset += gameRef.gameSpeed * dt;
       // 무한 루프를 위해 오프셋 리셋
       if (scrollOffset > 150) {

@@ -14,7 +14,7 @@ class ObstacleManager extends Component with HasGameRef<RunnerGame> {
   void update(double dt) {
     super.update(dt);
 
-    if (gameRef.isGameOver) return;
+    if (gameRef.state != GameState.playing) return;
 
     timer += dt;
     
