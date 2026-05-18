@@ -35,6 +35,7 @@ class GameScreen extends StatelessWidget {
         overlayBuilderMap: {
           'Title': (context, game) => _TitleOverlay(game: game),
           'GameOver': (context, game) => _GameOverOverlay(game: game),
+          'AudioControl': (context, game) => _AudioControlOverlay(game: game),
         },
       ),
     );
@@ -101,6 +102,48 @@ class _TitleOverlay extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AudioControlOverlay extends StatelessWidget {
+  const _AudioControlOverlay({required this.game});
+
+  final RunnerGame game;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned(
+          top: 16,
+          left: 16,
+          child: SafeArea(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: game.audio.mutedNotifier,
+              builder: (context, muted, _) {
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: game.audio.toggleMute,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      muted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

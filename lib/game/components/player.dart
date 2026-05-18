@@ -119,6 +119,7 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
     if (position.y >= groundY) {
       velocityY = jumpVelocity;
       HapticFeedback.lightImpact();
+      gameRef.audio.playJump();
     }
   }
 
