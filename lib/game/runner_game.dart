@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'components/ground.dart';
+import 'components/parallax_background.dart';
 import 'components/player.dart';
 import 'managers/obstacle_manager.dart';
 
@@ -13,6 +16,8 @@ enum GameState { title, playing, gameOver }
 class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   static const String _bestScoreKey = 'best_score';
   static const double _initialGameSpeed = 300.0;
+  static const double _deathAnimDuration = 0.4;
+  static const double _deathShakeMagnitude = 12;
 
   late Player player;
   late ObstacleManager obstacleManager;
@@ -24,7 +29,9 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   int bestScore = 0;
   double gameSpeed = _initialGameSpeed;
 
-  // 외부(GameOver 오버레이 등)에서 표시할 정수 점수
+  double _deathAnimTime = 0;
+  final Random _rng = Random();
+
   int get displayScore => score.floor();
 
   @override
@@ -36,6 +43,13 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
 
     await images.loadAll(['run.png', 'jump.png', 'obstacle.png']);
     await _loadBestScore();
+
+    // 배경 패럴랙스 (priority 음수로 항상 뒤에)
+    add(SkyLayer());
+    add(SunLayer());
+    add(DistantMountainLayer());
+    add(CloudLayer());
+    add(HillLayer());
 
     add(Ground());
     player = Player();
@@ -102,8 +116,10 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
         player.jump();
         break;
       case GameState.gameOver:
-        // GameOver 오버레이의 Restart 버튼에서 처리하므로 화면 탭으로도 가능하게 둠.
-        resetGame();
+        // 죽음 연출 중에는 재시작 방지
+        if (_deathAnimTime <= 0) {
+          resetGame();
+        }
         break;
     }
   }
@@ -126,14 +142,15 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
       _bestText.text = 'Best: $bestScore';
       _saveBestScore();
     }
-    pauseEngine();
-    overlays.add('GameOver');
+    _deathAnimTime = _deathAnimDuration;
+    // pauseEngine은 죽음 연출이 끝난 뒤에 호출 (overlay도 그 때 표시)
   }
 
   void resetGame() {
     score = 0;
     gameSpeed = _initialGameSpeed;
     state = GameState.playing;
+    _deathAnimTime = 0;
     obstacleManager.reset();
     player.reset();
     _scoreText.text = 'Score: 0';
@@ -144,11 +161,44 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   @override
   void update(double dt) {
     super.update(dt);
+
+    if (state == GameState.gameOver && _deathAnimTime > 0) {
+      _deathAnimTime -= dt;
+      if (_deathAnimTime <= 0) {
+        _deathAnimTime = 0;
+        pauseEngine();
+        overlays.add('GameOver');
+      }
+    }
+
     if (state == GameState.playing) {
-      // 거리 기반 점수: 빠르게 달릴수록 더 많이 적립 (프레임레이트 무관).
       score += gameSpeed * dt / 50.0;
       gameSpeed += 5 * dt;
       _scoreText.text = 'Score: $displayScore';
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    final shaking = state == GameState.gameOver && _deathAnimTime > 0;
+
+    if (shaking) {
+      final intensity = _deathAnimTime / _deathAnimDuration;
+      final dx =
+          (_rng.nextDouble() - 0.5) * 2 * _deathShakeMagnitude * intensity;
+      final dy =
+          (_rng.nextDouble() - 0.5) * 2 * _deathShakeMagnitude * intensity;
+      canvas.save();
+      canvas.translate(dx, dy);
+      super.render(canvas);
+      canvas.restore();
+
+      // 빨간 플래시 (위에 덧칠)
+      final flashOpacity = 0.55 * intensity;
+      final flashPaint = Paint()..color = Colors.red.withOpacity(flashOpacity);
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.x, size.y), flashPaint);
+    } else {
+      super.render(canvas);
     }
   }
 }

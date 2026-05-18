@@ -1,5 +1,6 @@
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flutter/services.dart';
 
 import '../runner_game.dart';
 
@@ -117,6 +118,7 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
     // 바닥에 있을 때만 점프 가능
     if (position.y >= groundY) {
       velocityY = jumpVelocity;
+      HapticFeedback.lightImpact();
     }
   }
 
