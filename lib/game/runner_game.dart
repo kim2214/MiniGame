@@ -12,7 +12,7 @@ import 'components/parallax_background.dart';
 import 'components/player.dart';
 import 'managers/obstacle_manager.dart';
 
-enum GameState { title, playing, gameOver }
+enum GameState { title, playing, paused, gameOver }
 
 class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   static const String _bestScoreKey = 'best_score';
@@ -20,6 +20,11 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   static const double _deathAnimDuration = 0.4;
   static const double _deathShakeMagnitude = 12;
   static const int _milestoneStep = 500;
+
+  // 난이도 곡선: speed = init + (max - init) * (1 - e^(-t/tau))
+  // t=0:300, t=30:~489, t=60:~594, t=∞:720
+  static const double _maxGameSpeed = 720.0;
+  static const double _speedTimeConstant = 50.0;
 
   late Player player;
   late ObstacleManager obstacleManager;
@@ -36,6 +41,7 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   double _deathAnimTime = 0;
   bool _isNewBest = false;
   int _lastMilestone = 0;
+  double _elapsedTime = 0;
   final Random _rng = Random();
 
   int get displayScore => score.floor();
@@ -123,6 +129,9 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
       case GameState.playing:
         player.jump();
         break;
+      case GameState.paused:
+        // Paused 오버레이의 Resume/Restart 버튼으로만 조작
+        break;
       case GameState.gameOver:
         // 죽음 연출 중에는 재시작 방지
         if (_deathAnimTime <= 0) {
@@ -137,9 +146,27 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
     state = GameState.playing;
     score = 0;
     gameSpeed = _initialGameSpeed;
+    _elapsedTime = 0;
     _lastMilestone = 0;
     _scoreText.text = 'Score: 0';
     overlays.remove('Title');
+    overlays.add('PauseControl');
+  }
+
+  void pause() {
+    if (state != GameState.playing) return;
+    state = GameState.paused;
+    pauseEngine();
+    overlays.remove('PauseControl');
+    overlays.add('Paused');
+  }
+
+  void resume() {
+    if (state != GameState.paused) return;
+    state = GameState.playing;
+    overlays.remove('Paused');
+    overlays.add('PauseControl');
+    resumeEngine();
   }
 
   void gameOver() {
@@ -155,6 +182,7 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
     }
     audio.playHit();
     _deathAnimTime = _deathAnimDuration;
+    overlays.remove('PauseControl');
     // pauseEngine은 죽음 연출이 끝난 뒤에 호출 (overlay도 그 때 표시)
   }
 
@@ -163,11 +191,14 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
     gameSpeed = _initialGameSpeed;
     state = GameState.playing;
     _deathAnimTime = 0;
+    _elapsedTime = 0;
     _lastMilestone = 0;
     obstacleManager.reset();
     player.reset();
     _scoreText.text = 'Score: 0';
     overlays.remove('GameOver');
+    overlays.remove('Paused');
+    overlays.add('PauseControl');
     resumeEngine();
   }
 
@@ -188,8 +219,12 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
     }
 
     if (state == GameState.playing) {
+      _elapsedTime += dt;
+      // 점근 곡선: 초반엔 빠르게 가속, 720px/s에 수렴
+      gameSpeed = _initialGameSpeed +
+          (_maxGameSpeed - _initialGameSpeed) *
+              (1 - exp(-_elapsedTime / _speedTimeConstant));
       score += gameSpeed * dt / 50.0;
-      gameSpeed += 5 * dt;
       _scoreText.text = 'Score: $displayScore';
 
       final milestone = displayScore ~/ _milestoneStep;
