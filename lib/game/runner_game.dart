@@ -61,12 +61,15 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
     await _loadBestScore();
     await audio.init();
 
-    // 배경 패럴랙스 (priority 음수로 항상 뒤에)
+    // 배경 패럴랙스 (priority 음수로 항상 뒤에). 렌더 순서는 priority가 결정.
     add(SkyLayer());
+    add(StarLayer());
+    add(MoonLayer());
     add(SunLayer());
     add(DistantMountainLayer());
     add(CloudLayer());
     add(HillLayer());
+    add(AtmosphereOverlay());
 
     add(Ground());
     player = Player();
