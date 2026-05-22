@@ -18,7 +18,8 @@ import 'managers/obstacle_manager.dart';
 
 enum GameState { title, playing, paused, gameOver }
 
-class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
+class RunnerGame extends FlameGame
+    with TapCallbacks, DragCallbacks, HasCollisionDetection {
   static const String _bestScoreKey = 'best_score';
   static const double _initialGameSpeed = 300.0;
   static const double _deathAnimDuration = 0.4;
@@ -26,9 +27,9 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   static const int _milestoneStep = 500;
 
   // 난이도 곡선: speed = init + (max - init) * (1 - e^(-t/tau))
-  // t=0:300, t=30:~489, t=60:~594, t=∞:720
-  static const double _maxGameSpeed = 720.0;
-  static const double _speedTimeConstant = 50.0;
+  // 완화된 곡선: t=0:300, t=30:~431, t=60:~518, t=∞:620
+  static const double _maxGameSpeed = 620.0;
+  static const double _speedTimeConstant = 70.0;
 
   late Player player;
   late ObstacleManager obstacleManager;
@@ -46,6 +47,10 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   bool _isNewBest = false;
   int _lastMilestone = 0;
   double _elapsedTime = 0;
+  Vector2? _dragOrigin;
+  bool _dragGestureTriggered = false;
+  // 작은 임계값으로 입력 반응성 ↑ (스와이프 의도 빠르게 감지)
+  static const double _swipeThreshold = 20.0;
   final Random _rng = Random();
 
   int get displayScore => score.floor();
@@ -57,7 +62,9 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   Future<void> onLoad() async {
     await super.onLoad();
 
-    await images.loadAll(['run.png', 'jump.png', 'obstacle.png']);
+    await images.loadAll(
+      ['run.png', 'jump.png', 'slide.png', 'obstacle.png', 'bat.png'],
+    );
     await _loadBestScore();
     await audio.init();
 
@@ -130,6 +137,8 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
   @override
   void onTapDown(TapDownEvent event) {
     super.onTapDown(event);
+    // TapCallbacks + DragCallbacks가 함께 있으면 제스처 아레나가 둘을 구분.
+    // onTapDown은 드래그가 아닌 "확정된 탭"일 때만 호출되므로 어느 위치든 점프.
     switch (state) {
       case GameState.title:
         startGame();
@@ -138,15 +147,53 @@ class RunnerGame extends FlameGame with TapCallbacks, HasCollisionDetection {
         player.jump();
         break;
       case GameState.paused:
-        // Paused 오버레이의 Resume/Restart 버튼으로만 조작
         break;
       case GameState.gameOver:
-        // 죽음 연출 중에는 재시작 방지
         if (_deathAnimTime <= 0) {
           resetGame();
         }
         break;
     }
+  }
+
+  @override
+  void onDragStart(DragStartEvent event) {
+    super.onDragStart(event);
+    _dragOrigin = event.localPosition.clone();
+    _dragGestureTriggered = false;
+  }
+
+  @override
+  void onDragUpdate(DragUpdateEvent event) {
+    super.onDragUpdate(event);
+    if (state != GameState.playing) return;
+    if (_dragGestureTriggered) return;
+    final origin = _dragOrigin;
+    if (origin == null) return;
+    final dy = event.localEndPosition.y - origin.y;
+    if (dy > _swipeThreshold) {
+      // 아래로 스와이프 → 슬라이드
+      player.slide();
+      _dragGestureTriggered = true;
+    } else if (dy < -_swipeThreshold) {
+      // 위로 스와이프 → 점프
+      player.jump();
+      _dragGestureTriggered = true;
+    }
+  }
+
+  @override
+  void onDragEnd(DragEndEvent event) {
+    super.onDragEnd(event);
+    _dragOrigin = null;
+    _dragGestureTriggered = false;
+  }
+
+  @override
+  void onDragCancel(DragCancelEvent event) {
+    super.onDragCancel(event);
+    _dragOrigin = null;
+    _dragGestureTriggered = false;
   }
 
   void startGame() {

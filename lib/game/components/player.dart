@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../runner_game.dart';
 
-enum PlayerState { running, jumping }
+enum PlayerState { running, jumping, sliding }
 
 class Player extends SpriteAnimationGroupComponent<PlayerState>
     with HasGameRef<RunnerGame>, CollisionCallbacks {
@@ -18,9 +18,12 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
   // 한 달리기 사이클(8프레임) 동안 배경이 시각적으로 진행해야 할 픽셀 거리.
   // 이 값을 gameSpeed로 나눠 stepTime을 동적으로 맞춰 발이 미끄러지지 않게 한다.
   static const double pixelsPerRunCycle = 220.0;
+  static const double slideDuration = 0.8;
 
   double velocityY = 0.0;
   late double groundY;
+  late RectangleHitbox _hitbox;
+  double _slideTimeLeft = 0;
   final Random _rng = Random();
 
   Player() : super(size: Vector2.all(playerSize), anchor: Anchor.bottomCenter);
@@ -32,10 +35,12 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
     // 1. 이미지 캐시에서 이미지 가져오기
     final runImage = gameRef.images.fromCache('run.png');
     final jumpImage = gameRef.images.fromCache('jump.png');
+    final slideImage = gameRef.images.fromCache('slide.png');
 
-    // 2. 올려주신 이미지 기준으로 프레임 개수 유추 (Run: 8개, Jump: 6개)
-    final runFrameWidth = runImage.width / 8;
-    final jumpFrameWidth = jumpImage.width / 6;
+    // 2. 프레임 개수 (Run: 8, Jump: 6, Slide: 7). floor로 sub-pixel 방지.
+    final runFrameWidth = (runImage.width / 8).floorToDouble();
+    final jumpFrameWidth = (jumpImage.width / 6).floorToDouble();
+    final slideFrameWidth = (slideImage.width / 7).floorToDouble();
 
     // 3. 달리기 애니메이션 생성
     final runAnimation = SpriteAnimation.fromFrameData(
@@ -58,21 +63,45 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
       ),
     );
 
-    // 5. 애니메이션 맵에 등록하고 기본 상태를 running으로 설정
+    // 5. 슬라이드 애니메이션 생성 — run.png와 동일하게 전체 프레임을 그대로 재생.
+    final slideAnimation = SpriteAnimation.fromFrameData(
+      slideImage,
+      SpriteAnimationData.sequenced(
+        amount: 7,
+        stepTime: 0.09,
+        textureSize: Vector2(slideFrameWidth, slideImage.height.toDouble()),
+        loop: false, // 한 번 재생 후 마지막 프레임 유지
+      ),
+    );
+
+    // 6. 애니메이션 맵에 등록하고 기본 상태를 running으로 설정
     animations = {
       PlayerState.running: runAnimation,
       PlayerState.jumping: jumpAnimation,
+      PlayerState.sliding: slideAnimation,
     };
     current = PlayerState.running;
 
     groundY = gameRef.size.y - 100.0; // 바닥 높이
     position = Vector2(50.0 + playerSize / 2, groundY);
 
-    // 충돌 박스(Hitbox) 추가 - 캐릭터 이미지에 맞게 크기 조절
-    add(RectangleHitbox(
+    // 충돌 박스 - 동적으로 상태에 따라 size/position 변경
+    _hitbox = RectangleHitbox(
       size: Vector2(playerSize * 0.5, playerSize * 0.8),
       position: Vector2(playerSize * 0.25, playerSize * 0.1),
-    ));
+    );
+    add(_hitbox);
+  }
+
+  void _updateHitbox() {
+    if (current == PlayerState.sliding) {
+      // 낮고 넓은 hitbox — 박쥐 아래로 통과 가능
+      _hitbox.size = Vector2(playerSize * 0.7, playerSize * 0.35);
+      _hitbox.position = Vector2(playerSize * 0.15, playerSize * 0.62);
+    } else {
+      _hitbox.size = Vector2(playerSize * 0.5, playerSize * 0.8);
+      _hitbox.position = Vector2(playerSize * 0.25, playerSize * 0.1);
+    }
   }
 
   void _syncRunStepTime() {
@@ -95,8 +124,16 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
       _syncRunStepTime();
     }
 
+    // 슬라이드 타이머 진행
+    if (current == PlayerState.sliding) {
+      _slideTimeLeft -= dt;
+      if (_slideTimeLeft <= 0) {
+        current = PlayerState.running;
+        _updateHitbox();
+      }
+    }
+
     // 공중에 있거나 위로 점프 중일 때만 중력을 적용합니다.
-    // (이 조건이 없으면 매 프레임마다 바닥으로 미세하게 파고들었다가 다시 올라오는 과정이 반복되어 캐릭터가 위아래로 덜덜 떨릴 수 있습니다.)
     if (position.y < groundY || velocityY < 0) {
       velocityY += gravity * dt;
       position.y += velocityY * dt;
@@ -107,19 +144,28 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
       position.y = groundY;
       velocityY = 0;
 
-      // 상태가 달리기 상태가 아니라면 변경
-      if (current != PlayerState.running) {
+      // 슬라이드 상태가 아닐 때만 running으로 강제 전환
+      if (current != PlayerState.running &&
+          current != PlayerState.sliding) {
         current = PlayerState.running;
+        _updateHitbox();
       }
     } else {
       // 공중에 떠 있을 때
       if (current != PlayerState.jumping) {
         current = PlayerState.jumping;
+        _updateHitbox();
       }
     }
   }
 
   void jump() {
+    // 슬라이드 중이라면 즉시 캔슬하고 점프 (반응성 우선)
+    if (current == PlayerState.sliding) {
+      _slideTimeLeft = 0;
+      current = PlayerState.running;
+      _updateHitbox();
+    }
     // 바닥에 있을 때만 점프 가능
     if (position.y >= groundY) {
       velocityY = jumpVelocity;
@@ -127,6 +173,20 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
       gameRef.audio.playJump();
       gameRef.add(_buildJumpDust(Vector2(position.x, groundY)));
     }
+  }
+
+  void slide() {
+    // 이미 슬라이드 중이거나 공중이면 무시
+    if (current == PlayerState.sliding) return;
+    if (position.y < groundY) return;
+
+    current = PlayerState.sliding;
+    // 슬라이드 애니메이션 한 번 처음부터 재생
+    animationTickers?[PlayerState.sliding]?.reset();
+    _slideTimeLeft = slideDuration;
+    _updateHitbox();
+    HapticFeedback.lightImpact();
+    gameRef.audio.playJump(); // 슬라이드 시작 SFX (점프 사운드 재활용)
   }
 
   ParticleSystemComponent _buildJumpDust(Vector2 origin) {
@@ -156,6 +216,8 @@ class Player extends SpriteAnimationGroupComponent<PlayerState>
   void reset() {
     position = Vector2(50.0 + playerSize / 2, groundY);
     velocityY = 0;
+    _slideTimeLeft = 0;
     current = PlayerState.running;
+    _updateHitbox();
   }
 }
