@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import '../runner_game.dart';
 
 class PlayerShadow extends Component with HasGameRef<RunnerGame> {
-  static const double _baseWidth = 70;
-  static const double _baseHeight = 12;
+  // 캐릭터 폭 대비 그림자 폭 비율. 캐릭터(~54px)보다 살짝 좁게.
+  static const double _widthRatio = 0.88;
+  static const double _baseHeight = 10;
   static const double _maxHeight = 200;
 
   @override
@@ -21,10 +22,9 @@ class PlayerShadow extends Component with HasGameRef<RunnerGame> {
 
     // 점프할수록 작아지고 투명해짐
     final shrink = (1.0 - heightAboveGround / 400.0).clamp(0.4, 1.0);
-    final w = _baseWidth * shrink;
+    final w = player.size.x * _widthRatio * shrink;
     final h = _baseHeight * shrink;
-    final opacity =
-        (0.45 * (1 - heightAboveGround / 300.0)).clamp(0.08, 0.45);
+    final opacity = (0.45 * (1 - heightAboveGround / 300.0)).clamp(0.08, 0.45);
 
     final paint = Paint()..color = Colors.black.withOpacity(opacity);
     canvas.drawOval(

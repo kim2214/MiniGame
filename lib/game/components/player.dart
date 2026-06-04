@@ -111,16 +111,31 @@ class Player extends SpriteAnimationComponent
     _syncRunStepTime();
 
     // 공중에 있거나 위로 점프 중일 때만 중력을 적용합니다.
-    if (position.y < groundY || velocityY < 0) {
+    final wasAirborne = position.y < groundY;
+    if (wasAirborne || velocityY < 0) {
       velocityY += gravity * dt;
       position.y += velocityY * dt;
     }
 
     // 바닥에 닿았을 때 (착지)
     if (position.y >= groundY) {
+      if (wasAirborne) {
+        _onLand();
+      }
       position.y = groundY;
       velocityY = 0;
     }
+  }
+
+  // 착지 피드백 — 점프보다 약한 먼지 + 가벼운 햅틱
+  void _onLand() {
+    HapticFeedback.selectionClick();
+    gameRef.add(_buildDust(
+      Vector2(position.x, groundY),
+      count: 5,
+      spreadX: 130,
+      riseY: 40,
+    ));
   }
 
   void jump() {
@@ -129,20 +144,31 @@ class Player extends SpriteAnimationComponent
       velocityY = jumpVelocity;
       HapticFeedback.lightImpact();
       gameRef.audio.playJump();
-      gameRef.add(_buildJumpDust(Vector2(position.x, groundY)));
+      gameRef.add(_buildDust(
+        Vector2(position.x, groundY),
+        count: 7,
+        spreadX: 110,
+        riseY: 70,
+      ));
     }
   }
 
-  ParticleSystemComponent _buildJumpDust(Vector2 origin) {
+  // 흙먼지 파티클 — 점프(위로 솟음)와 착지(옆으로 퍼짐) 양쪽에서 재사용.
+  ParticleSystemComponent _buildDust(
+    Vector2 origin, {
+    required int count,
+    required double spreadX,
+    required double riseY,
+  }) {
     return ParticleSystemComponent(
       position: origin.clone(),
       priority: 5,
       particle: Particle.generate(
-        count: 7,
+        count: count,
         lifespan: 0.45,
         generator: (i) {
-          final dx = (_rng.nextDouble() - 0.5) * 110;
-          final dy = -25 - _rng.nextDouble() * 70;
+          final dx = (_rng.nextDouble() - 0.5) * spreadX;
+          final dy = -25 - _rng.nextDouble() * riseY;
           return AcceleratedParticle(
             speed: Vector2(dx, dy),
             acceleration: Vector2(0, 320),
