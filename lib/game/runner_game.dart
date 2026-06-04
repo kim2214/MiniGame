@@ -145,7 +145,7 @@ class RunnerGame extends FlameGame
         startGame();
         break;
       case GameState.playing:
-        player.jump();
+        player.pressJump();
         break;
       case GameState.paused:
         break;
@@ -155,6 +155,18 @@ class RunnerGame extends FlameGame
         }
         break;
     }
+  }
+
+  @override
+  void onTapUp(TapUpEvent event) {
+    super.onTapUp(event);
+    if (state == GameState.playing) player.releaseJump();
+  }
+
+  @override
+  void onTapCancel(TapCancelEvent event) {
+    super.onTapCancel(event);
+    if (state == GameState.playing) player.releaseJump();
   }
 
   @override
@@ -173,8 +185,8 @@ class RunnerGame extends FlameGame
     if (origin == null) return;
     final dy = event.localEndPosition.y - origin.y;
     if (dy < -_swipeThreshold) {
-      // 위로 스와이프 → 점프
-      player.jump();
+      // 위로 스와이프 → 점프 (손가락을 떼면 onDragEnd에서 release)
+      player.pressJump();
       _dragGestureTriggered = true;
     }
   }
@@ -184,6 +196,7 @@ class RunnerGame extends FlameGame
     super.onDragEnd(event);
     _dragOrigin = null;
     _dragGestureTriggered = false;
+    if (state == GameState.playing) player.releaseJump();
   }
 
   @override
@@ -191,6 +204,7 @@ class RunnerGame extends FlameGame
     super.onDragCancel(event);
     _dragOrigin = null;
     _dragGestureTriggered = false;
+    if (state == GameState.playing) player.releaseJump();
   }
 
   void startGame() {

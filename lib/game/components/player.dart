@@ -13,6 +13,14 @@ class Player extends SpriteAnimationComponent
   static const double playerSize = 80.0; // 캐릭터 표시 높이
   static const double gravity = 1500.0;
   static const double jumpVelocity = -650.0; // 점프력을 살짝 높임
+  // 가변 점프 — 상승 중에 입력을 떼면 상승 속도에 곱해 점프를 짧게 끊는다.
+  // 짧게 탭 = 낮은 점프(~절반), 누르고 있으면 풀점프.
+  static const double _jumpCutFactor = 0.42;
+
+  // 입력 버퍼 — 착지 직전(이 시간 안)의 점프 입력을 기억했다가 닿는 즉시 점프.
+  // 타이밍이 약간 빨라도 점프가 씹히지 않아 조작이 공정하게 느껴진다.
+  static const double _jumpBufferDuration = 0.12;
+
   // 한 달리기 사이클(15프레임) 동안 배경이 시각적으로 진행해야 할 픽셀 거리.
   // 이 값을 gameSpeed로 나눠 stepTime을 동적으로 맞춰 발이 미끄러지지 않게 한다.
   // 키울수록 애니메이션이 느려진다. (220 → 330: 프레임 크기 편차가 있는
@@ -52,6 +60,8 @@ class Player extends SpriteAnimationComponent
 
   double velocityY = 0.0;
   late double groundY;
+  bool _jumpHeld = false;
+  double _jumpBufferLeft = 0;
   final Random _rng = Random();
 
   Player()
@@ -110,6 +120,11 @@ class Player extends SpriteAnimationComponent
     // 달리기 애니메이션 속도를 게임 속도에 동기화 (스케이팅 방지)
     _syncRunStepTime();
 
+    // 점프 입력 버퍼 타이머 진행
+    if (_jumpBufferLeft > 0) {
+      _jumpBufferLeft -= dt;
+    }
+
     // 공중에 있거나 위로 점프 중일 때만 중력을 적용합니다.
     final wasAirborne = position.y < groundY;
     if (wasAirborne || velocityY < 0) {
@@ -119,11 +134,19 @@ class Player extends SpriteAnimationComponent
 
     // 바닥에 닿았을 때 (착지)
     if (position.y >= groundY) {
-      if (wasAirborne) {
-        _onLand();
-      }
       position.y = groundY;
       velocityY = 0;
+      if (wasAirborne) {
+        _onLand();
+        // 착지 직전에 눌렀던 점프가 버퍼에 남아 있으면 즉시 점프.
+        // 이미 손을 뗀 짧은 탭이었다면 낮은 점프로 처리.
+        if (_jumpBufferLeft > 0) {
+          _executeJump();
+          if (!_jumpHeld) {
+            velocityY *= _jumpCutFactor;
+          }
+        }
+      }
     }
   }
 
@@ -138,19 +161,36 @@ class Player extends SpriteAnimationComponent
     ));
   }
 
-  void jump() {
-    // 바닥에 있을 때만 점프 가능
+  /// 점프 입력 시작 (탭 다운 / 위로 스와이프)
+  void pressJump() {
+    _jumpHeld = true;
     if (position.y >= groundY) {
-      velocityY = jumpVelocity;
-      HapticFeedback.lightImpact();
-      gameRef.audio.playJump();
-      gameRef.add(_buildDust(
-        Vector2(position.x, groundY),
-        count: 7,
-        spreadX: 110,
-        riseY: 70,
-      ));
+      _executeJump();
+    } else {
+      // 공중에서 누른 입력은 버퍼에 저장 → 착지 즉시 점프
+      _jumpBufferLeft = _jumpBufferDuration;
     }
+  }
+
+  /// 점프 입력 해제 (탭 업 / 드래그 끝) — 상승 중이면 점프를 짧게 끊는다
+  void releaseJump() {
+    _jumpHeld = false;
+    if (velocityY < 0) {
+      velocityY *= _jumpCutFactor;
+    }
+  }
+
+  void _executeJump() {
+    velocityY = jumpVelocity;
+    _jumpBufferLeft = 0;
+    HapticFeedback.lightImpact();
+    gameRef.audio.playJump();
+    gameRef.add(_buildDust(
+      Vector2(position.x, groundY),
+      count: 7,
+      spreadX: 110,
+      riseY: 70,
+    ));
   }
 
   // 흙먼지 파티클 — 점프(위로 솟음)와 착지(옆으로 퍼짐) 양쪽에서 재사용.
@@ -185,5 +225,7 @@ class Player extends SpriteAnimationComponent
   void reset() {
     position = Vector2(50.0 + size.x / 2, groundY);
     velocityY = 0;
+    _jumpHeld = false;
+    _jumpBufferLeft = 0;
   }
 }
