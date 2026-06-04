@@ -15,26 +15,30 @@ class Player extends SpriteAnimationComponent
   static const double jumpVelocity = -650.0; // 점프력을 살짝 높임
   // 한 달리기 사이클(15프레임) 동안 배경이 시각적으로 진행해야 할 픽셀 거리.
   // 이 값을 gameSpeed로 나눠 stepTime을 동적으로 맞춰 발이 미끄러지지 않게 한다.
-  static const double pixelsPerRunCycle = 220.0;
+  // 키울수록 애니메이션이 느려진다. (220 → 330: 프레임 크기 편차가 있는
+  // AI 생성 시트라 빠르게 재생하면 덜덜거려 보여 1.5배 느리게 조정)
+  static const double pixelsPerRunCycle = 330.0;
 
   // run.png는 균일 그리드가 아니다 — 캐릭터 15개가 제각각의 간격으로 놓여 있어
-  // 등분(sequenced) 슬라이스가 불가능. 알파 채널을 분석해 얻은 각 캐릭터의
-  // 중심 기준 srcPosition.x 목록 (프레임 폭 110px 기준).
+  // 등분(sequenced) 슬라이스가 불가능. 알파 채널을 분석해 얻은 srcPosition.x 목록.
+  // 정렬 기준은 "머리 중심" — 바운딩 박스 중심으로 자르면 팔다리가 뻗은 방향에
+  // 따라 몸통이 프레임마다 좌우로 흔들린다(덜덜거림). 머리는 달리기 내내 거의
+  // 고정이므로 머리 x좌표가 모든 프레임에서 같은 위치에 오도록 창을 잡았다.
+  // (원본 10번째 캐릭터 srcX=1112는 혼자 10% 작은 이상치 프레임이라 제외 — 움찔거림 유발)
   static const List<double> _runFrameX = [
-    34,
-    153,
-    277,
-    396,
-    526,
-    642,
+    38,
+    154,
+    275,
+    397,
+    524,
+    641,
     762,
-    881,
+    885,
     996,
-    1111,
-    1238,
-    1351,
+    1234,
+    1353,
     1470,
-    1585,
+    1586,
     1701,
   ];
 
@@ -75,7 +79,8 @@ class Player extends SpriteAnimationComponent
           srcSize: Vector2(_runFrameWidth, _runFrameHeight),
         ),
     ];
-    animation = SpriteAnimation.spriteList(sprites, stepTime: 0.045);
+    // 초기값 — 실제로는 매 프레임 _syncRunStepTime이 게임 속도에 맞춰 갱신.
+    animation = SpriteAnimation.spriteList(sprites, stepTime: 0.073);
 
     groundY = gameRef.size.y - 100.0; // 바닥 높이
     position = Vector2(50.0 + size.x / 2, groundY);
