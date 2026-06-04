@@ -49,6 +49,7 @@ class RunnerGame extends FlameGame
   double _elapsedTime = 0;
   Vector2? _dragOrigin;
   bool _dragGestureTriggered = false;
+
   // 작은 임계값으로 입력 반응성 ↑ (스와이프 의도 빠르게 감지)
   static const double _swipeThreshold = 20.0;
   final Random _rng = Random();
@@ -63,7 +64,7 @@ class RunnerGame extends FlameGame
     await super.onLoad();
 
     await images.loadAll(
-      ['run.png', 'jump.png', 'slide.png', 'obstacle.png', 'bat.png'],
+      ['run.png', 'obstacle.png'],
     );
     await _loadBestScore();
     await audio.init();
@@ -171,11 +172,7 @@ class RunnerGame extends FlameGame
     final origin = _dragOrigin;
     if (origin == null) return;
     final dy = event.localEndPosition.y - origin.y;
-    if (dy > _swipeThreshold) {
-      // 아래로 스와이프 → 슬라이드
-      player.slide();
-      _dragGestureTriggered = true;
-    } else if (dy < -_swipeThreshold) {
+    if (dy < -_swipeThreshold) {
       // 위로 스와이프 → 점프
       player.jump();
       _dragGestureTriggered = true;
